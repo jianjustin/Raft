@@ -19,13 +19,15 @@ package raft
 
 import (
 	"jerry.raft/labrpc"
+	"time"
+
 	//	"bytes"
 	"sync"
 	"sync/atomic"
 	//	"6.824/labgob"
 )
 
-//
+// ApplyMsg
 // as each Raft peer becomes aware that successive log entries are
 // committed, the peer should send an ApplyMsg to the service (or
 // tester) on the same server, via the applyCh passed to Make(). set
@@ -48,8 +50,13 @@ type ApplyMsg struct {
 	SnapshotIndex int
 }
 
+type CommandTerm struct {
+	Command interface{}
+	Term    int
+}
+
 //
-// A Go object implementing a single Raft peer.
+// Raft节点实现
 //
 type Raft struct {
 	mu        sync.Mutex          // Lock to protect shared access to this peer's state
@@ -62,6 +69,17 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 
+	status       int
+	applyMsg     chan ApplyMsg
+	currentTerm  int
+	votedFor     int
+	log          []CommandTerm
+	commitIndex  int
+	lastApplied  int
+	lastLogIndex int
+	nextIndex    []int
+	matchIndex   []int
+	lastAccessed time.Time
 }
 
 // return currentTerm and whether this server
@@ -112,7 +130,7 @@ func (rf *Raft) readPersist(data []byte) {
 	// }
 }
 
-//
+// CondInstallSnapshot
 // A service wants to switch to snapshot.  Only do so if Raft hasn't
 // have more recent info since it communicate the snapshot on applyCh.
 //
@@ -123,6 +141,7 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 	return true
 }
 
+// Snapshot
 // the service says it has created a snapshot that has
 // all info up to and including index. this means the
 // service no longer needs the log through (and including)
@@ -132,7 +151,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 
 }
 
-//
+// RequestVoteArgs
 // example RequestVote RPC arguments structure.
 // field names must start with capital letters!
 //
@@ -140,7 +159,7 @@ type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
 }
 
-//
+// RequestVoteReply
 // example RequestVote RPC reply structure.
 // field names must start with capital letters!
 //
@@ -148,7 +167,7 @@ type RequestVoteReply struct {
 	// Your data here (2A).
 }
 
-//
+// RequestVote
 // example RequestVote RPC handler.
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
@@ -189,7 +208,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	return ok
 }
 
-//
+// Start
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
 // server isn't the leader, returns false. otherwise start the
@@ -213,7 +232,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	return index, term, isLeader
 }
 
-//
+// Kill
 // the tester doesn't halt goroutines created by Raft after each test,
 // but it does call the Kill() method. your code can use killed() to
 // check whether Kill() has been called. the use of atomic avoids the
@@ -246,16 +265,8 @@ func (rf *Raft) ticker() {
 	}
 }
 
-//
-// the service or tester wants to create a Raft server. the ports
-// of all the Raft servers (including this one) are in peers[]. this
-// server's port is peers[me]. all the servers' peers[] arrays
-// have the same order. persister is a place for this server to
-// save its persistent state, and also initially holds the most
-// recent saved state, if any. applyCh is a channel on which the
-// tester or service expects Raft to send ApplyMsg messages.
-// Make() must return quickly, so it should start goroutines
-// for any long-running work.
+// Make
+// 目标：创建Raft实例，对应实例端口是peers[me]
 //
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
