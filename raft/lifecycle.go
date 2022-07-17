@@ -15,24 +15,6 @@ func randTimeout() time.Duration {
 	return time.Duration(randTimeout) * time.Millisecond
 }
 
-func (rf *Raft) manageLifecycle() {
-	for true {
-		rf.mu.Lock()
-		status := rf.status
-		rf.mu.Unlock()
-
-		if status == Follower {
-			rf.manageFollower()
-		} else if status == Candidate {
-			rf.manageCandidate()
-		} else if status == Leader {
-			rf.manageLeader()
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
-}
-
 func (rf *Raft) manageFollower() {
 	duration := randTimeout()
 	time.Sleep(duration)
@@ -75,10 +57,10 @@ func (rf *Raft) manageCandidate() {
 
 		go func(peer int) {
 			args := RequestVoteArgs{}
-			args.term = term
-			args.candidateId = me
-			args.lastLogTerm = lastLogTerm
-			args.lastLogIndex = lastLogIndex
+			args.Term = term
+			args.CandidateId = me
+			args.LastLogTerm = lastLogTerm
+			args.LastLogIndex = lastLogIndex
 
 			reply := RequestVoteReply{}
 			ok := rf.sendRequestVote(peer, &args, &reply)
@@ -91,12 +73,12 @@ func (rf *Raft) manageCandidate() {
 				return
 			}
 
-			if reply.voteGranted {
+			if reply.VoteGranted {
 				finished++
 				count++
 			} else {
 				finished++
-				if args.term < reply.term {
+				if args.Term < reply.Term {
 					rf.status = Follower
 					rf.persist()
 				}
@@ -185,15 +167,15 @@ func (rf *Raft) manageLeader() {
 
 		rf.mu.Lock()
 
-		args.term = rf.currentTerm
+		args.Term = rf.currentTerm
 		prevLogIndex := nextIndex[peer] - 1
-		args.prevLogIndex = prevLogIndex
-		args.prevLogTerm = rf.log[prevLogIndex].Term
-		args.leaderCommit = rf.commitIndex
-		args.leaderId = rf.me
+		args.PrevLogIndex = prevLogIndex
+		args.PrevLogTerm = rf.log[prevLogIndex].Term
+		args.LeaderCommit = rf.commitIndex
+		args.LeaderId = rf.me
 
 		if nextIndex[peer] <= lastLogIndex {
-			args.entries = rf.log[prevLogIndex+1 : lastLogIndex+1]
+			args.Entries = rf.log[prevLogIndex+1 : lastLogIndex+1]
 		}
 		rf.mu.Unlock()
 
@@ -206,29 +188,29 @@ func (rf *Raft) manageLeader() {
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
 
-			if reply.success {
-				rf.nextIndex[peer] = int(math.Min(float64(rf.nextIndex[peer]+len(args.entries)), float64(rf.lastLogIndex+1)))
-				rf.matchIndex[peer] = prevLogIndex + len(args.entries)
+			if reply.Success {
+				rf.nextIndex[peer] = int(math.Min(float64(rf.nextIndex[peer]+len(args.Entries)), float64(rf.lastLogIndex+1)))
+				rf.matchIndex[peer] = prevLogIndex + len(args.Entries)
 			} else {
-				if reply.term > args.term {
+				if reply.Term > args.Term {
 					rf.status = Follower
 					return
 				}
 
-				if reply.xTerm == -1 {
-					rf.nextIndex[peer] = reply.xLen
+				if reply.XTerm == -1 {
+					rf.nextIndex[peer] = reply.XLen
 					return
 				}
 
 				index := -1
 				for i, v := range rf.log {
-					if v.Term == reply.xTerm {
+					if v.Term == reply.XTerm {
 						index = i
 					}
 				}
 
 				if index == -1 {
-					rf.nextIndex[peer] = reply.xIndex
+					rf.nextIndex[peer] = reply.XIndex
 				} else {
 					rf.nextIndex[peer] = index
 				}

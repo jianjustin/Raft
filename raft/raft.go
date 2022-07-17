@@ -90,20 +90,20 @@ type Raft struct {
 }
 
 type AppendEntriesArgs struct {
-	term         int
-	leaderId     int
-	prevLogIndex int
-	prevLogTerm  int
-	entries      []CommandTerm
-	leaderCommit int
+	Term         int
+	LeaderId     int
+	PrevLogIndex int
+	PrevLogTerm  int
+	Entries      []CommandTerm
+	LeaderCommit int
 }
 
 type AppendEntriesReply struct {
-	term    int
-	xTerm   int
-	xLen    int
-	xIndex  int
-	success bool
+	Term    int
+	XTerm   int
+	XLen    int
+	XIndex  int
+	Success bool
 }
 
 // return currentTerm and whether this server
@@ -181,10 +181,10 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 //
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
-	term         int
-	candidateId  int
-	lastLogIndex int
-	lastLogTerm  int
+	Term         int
+	CandidateId  int
+	LastLogIndex int
+	LastLogTerm  int
 }
 
 // RequestVoteReply
@@ -193,8 +193,8 @@ type RequestVoteArgs struct {
 //
 type RequestVoteReply struct {
 	// Your data here (2A).
-	term        int
-	voteGranted bool
+	Term        int
+	VoteGranted bool
 }
 
 // RequestVote
@@ -296,11 +296,19 @@ func (rf *Raft) killed() bool {
 // heartsbeats recently.
 func (rf *Raft) ticker() {
 	for rf.killed() == false {
+		rf.mu.Lock()
+		status := rf.status
+		rf.mu.Unlock()
 
-		// Your code here to check if a leader election should
-		// be started and to randomize sleeping time using
-		// time.Sleep().
+		if status == Follower {
+			rf.manageFollower()
+		} else if status == Candidate {
+			rf.manageCandidate()
+		} else if status == Leader {
+			rf.manageLeader()
+		}
 
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
