@@ -38,6 +38,13 @@ import (
 // snapshots) on the applyCh, but set CommandValid to false for these
 // other uses.
 //
+
+const (
+	Follower = iota
+	Candidate
+	Leader
+)
+
 type ApplyMsg struct {
 	CommandValid bool
 	Command      interface{}
@@ -69,17 +76,34 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 
-	status       int
-	applyMsg     chan ApplyMsg
-	currentTerm  int
-	votedFor     int
-	log          []CommandTerm
-	commitIndex  int
-	lastApplied  int
+	status       int           //节点状态
+	applyMsg     chan ApplyMsg //信号量
+	currentTerm  int           //实例最后知道的任期号
+	votedFor     int           //在当前获得选票的候选人Id
+	log          []CommandTerm //日志集合
+	commitIndex  int           //已知的最大的被提交的日志条目的索引值
+	lastApplied  int           //最后被应用到状态机的日志条目索引值
 	lastLogIndex int
-	nextIndex    []int
-	matchIndex   []int
+	nextIndex    []int //对于每个实例，需要发送给他的下一个日志条目的索引值
+	matchIndex   []int //对于每个实例，已经复制给他的日志的最高索引值
 	lastAccessed time.Time
+}
+
+type AppendEntriesArgs struct {
+	term         int
+	leaderId     int
+	prevLogIndex int
+	prevLogTerm  int
+	entries      []CommandTerm
+	leaderCommit int
+}
+
+type AppendEntriesReply struct {
+	term    int
+	xTerm   int
+	xLen    int
+	xIndex  int
+	success bool
 }
 
 // return currentTerm and whether this server
@@ -157,6 +181,10 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 //
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
+	term         int
+	candidateId  int
+	lastLogIndex int
+	lastLogTerm  int
 }
 
 // RequestVoteReply
@@ -165,6 +193,8 @@ type RequestVoteArgs struct {
 //
 type RequestVoteReply struct {
 	// Your data here (2A).
+	term        int
+	voteGranted bool
 }
 
 // RequestVote
@@ -172,6 +202,10 @@ type RequestVoteReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+}
+
+func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+
 }
 
 //
@@ -205,6 +239,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 //
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
+	return ok
+}
+
+func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
 	return ok
 }
 
@@ -271,11 +310,26 @@ func (rf *Raft) ticker() {
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
 	rf := &Raft{}
+
+	rf.mu.Lock()
+	rf.mu.Unlock()
+
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
 
 	// Your initialization code here (2A, 2B, 2C).
+	rf.status = Follower //初始化为跟随者
+	rf.log = []CommandTerm{
+		{
+			Command: nil,
+			Term:    0,
+		},
+	}
+	rf.votedFor = -1
+	rf.nextIndex = make([]int, len(rf.peers))
+	rf.matchIndex = make([]int, len(rf.peers))
+	rf.applyMsg = applyCh
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
